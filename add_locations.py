@@ -2,26 +2,34 @@ import geopandas as gpd
 import json
 import sys
 import time
+from tqdm import tqdm
 from shapely.geometry import Point
 
 max_level = 3
 
 # Load the GADM geopackage layers with only necessary columns
 gadm_gpkg_path = 'gadm-levels/gadm_410-levels.gpkg'
-gadm_level_0 = gpd.read_file(gadm_gpkg_path, layer='ADM_0', columns=['GID_0', 'COUNTRY'])
-gadm_level_1 = gpd.read_file(gadm_gpkg_path, layer='ADM_1', columns=['GID_1', 'NAME_1'])
-gadm_level_2 = gpd.read_file(gadm_gpkg_path, layer='ADM_2', columns=['GID_2', 'NAME_2'])
-gadm_level_3 = gpd.read_file(gadm_gpkg_path, layer='ADM_3', columns=['GID_3', 'NAME_3'])
+
+gadm_layers = ['ADM_0', 'ADM_1', 'ADM_2', 'ADM_3']
+gadm_data = []
+
+print("Loading GADM levels...")
+for layer in tqdm(gadm_layers, desc="GADM Levels"):
+    gadm_data.append(gpd.read_file(gadm_gpkg_path, layer=layer))
+
+gadm_level_0, gadm_level_1, gadm_level_2, gadm_level_3 = gadm_data
 
 # Function to perform spatial join and get administrative levels
 def get_admin_levels(point, levels, max_level):
     admin_info = {}
-    level_names = ['Country', 'admin1', 'admin2', 'admin3']
+    # Define the correct column names based on the GADM data
+    column_names = ['COUNTRY', 'NAME_1', 'NAME_2', 'NAME_3']
     point_gdf = gpd.GeoDataFrame(geometry=[point], crs='EPSG:4326')
-    for level, level_name in zip(levels[:max_level + 1], level_names[:max_level + 1]):
+    for level, column_name in zip(levels[:max_level + 1], column_names[:max_level + 1]):
         result = gpd.sjoin(point_gdf, level, how='left', predicate='within')
         if not result.empty:
-            admin_info[level_name] = result.iloc[0][level_name]
+            # Use the correct column name from the GADM data
+            admin_info[column_name] = result.iloc[0].get(column_name, '')
     return admin_info
 
 # Load the minimized.json file
@@ -40,8 +48,14 @@ start_time = time.time()
 def process_location(loc):
     point = loc.geometry
     admin_levels = get_admin_levels(point, [gadm_level_0, gadm_level_1, gadm_level_2, gadm_level_3], max_level)
-    for level_name in ['Country', 'admin1', 'admin2', 'admin3'][:max_level + 1]:
-        loc[level_name] = admin_levels.get(level_name, '')
+    # Use the correct column names when setting the values
+    loc['Country'] = admin_levels.get('COUNTRY', '')
+    if max_level >= 1:
+        loc['admin1'] = admin_levels.get('NAME_1', '')
+    if max_level >= 2:
+        loc['admin2'] = admin_levels.get('NAME_2', '')
+    if max_level >= 3:
+        loc['admin3'] = admin_levels.get('NAME_3', '')
     return loc
 
 locations_gdf = locations_gdf.apply(process_location, axis=1)
