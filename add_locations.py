@@ -11,17 +11,15 @@ gadm_level_2 = gpd.read_file(gadm_gpkg_path, layer='ADM_2')  # Counties/District
 gadm_level_3 = gpd.read_file(gadm_gpkg_path, layer='ADM_3')  # Communes/Municipalities
 
 # Function to perform spatial join and get administrative levels
-def get_admin_levels(point, levels):
+# Function to perform spatial join and get administrative levels up to a specified level
+def get_admin_levels(point, levels, max_level):
     admin_info = {}
-    # Create a GeoDataFrame for the point with the correct CRS
-    point_gdf = gpd.GeoDataFrame(geometry=[point], crs='EPSG:4326')
-    for level, level_name in zip(levels, ['Country', 'admin1', 'admin2', 'admin3']):
+    level_names = ['Country', 'admin1', 'admin2', 'admin3']
+    for level, level_name in zip(levels[:max_level + 1], level_names[:max_level + 1]):
+        point_gdf = gpd.GeoDataFrame(geometry=[point], crs='EPSG:4326')
         result = gpd.sjoin(point_gdf, level, how='left', predicate='within')
         if not result.empty:
-            if level_name == 'Country':
-                admin_info[level_name] = result.iloc[0].get('COUNTRY', '')
-            else:
-                admin_info[level_name] = result.iloc[0].get(f'NAME_{level_name[-1]}', '')
+            admin_info[level_name] = result.iloc[0].get(level_name, '')
     return admin_info
 
 # Load the minimized.json file
@@ -34,14 +32,17 @@ locations_gdf = gpd.GeoDataFrame(data, geometry=geometry)
 locations_gdf = locations_gdf.set_crs(epsg=4326)  # Set CRS to WGS 84
 
 # Add the administrative levels to each location with progress tracking
+# Assuming max_level is defined somewhere in your script, e.g., max_level = 3
+max_level = 1  # Set this to the desired level: 0 for Country, 1 for admin1, etc.
+
 total_locations = len(locations_gdf)
 for index, loc in locations_gdf.iterrows():
     point = loc.geometry
-    admin_levels = get_admin_levels(point, [gadm_level_0, gadm_level_1, gadm_level_2, gadm_level_3])
-    for level_name in ['Country', 'admin1', 'admin2', 'admin3']:
+    admin_levels = get_admin_levels(point, [gadm_level_0, gadm_level_1, gadm_level_2, gadm_level_3], max_level)
+    for level_name in ['Country', 'admin1', 'admin2', 'admin3'][:max_level + 1]:
         locations_gdf.at[index, level_name] = admin_levels.get(level_name, '')
 
-    # Update progress
+# Update the progress output to reflect the current operation
     progress = (index + 1) / total_locations * 100
     sys.stdout.write(f"\rProcessing location {index + 1}/{total_locations} ({progress:.2f}%)")
     sys.stdout.flush()
