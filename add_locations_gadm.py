@@ -33,7 +33,7 @@ def get_admin_levels(point, levels, max_level):
     return admin_info
 
 # Load the minimized.json file
-with open('output/minimized.json', 'r') as file:
+with open('output/minimized_reduced_data.json', 'r') as file:
     data = json.load(file)['locations']
 
 # Calculate total_locations after loading the data
@@ -58,7 +58,8 @@ def process_location(loc):
         loc['admin3'] = admin_levels.get('NAME_3', '')
     return loc
 
-locations_gdf = locations_gdf.apply(process_location, axis=1)
+tqdm.pandas(desc="Processing locations")
+locations_gdf = locations_gdf.progress_apply(process_location, axis=1)
 
 # Progress and ETA
 elapsed_time = time.time() - start_time
